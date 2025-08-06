@@ -123,16 +123,17 @@
                             <td class="px-3 py-1">
                                 @php
                                     $dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+                                    $templateData = [
+                                        'id' => $tpl->id,
+                                        'depot' => $tpl->depot->name,
+                                        'day' => $dayNames[$tpl->day_of_week],
+                                        'start' => \Carbon\Carbon::parse($tpl->start_time)->format('H:i'),
+                                        'end' => \Carbon\Carbon::parse($tpl->end_time)->format('H:i')
+                                    ];
                                 @endphp
                                 <input type="checkbox" class="template-checkbox group-{{ $loop->parent->index }}" 
                                        value="{{ $tpl->id }}" onchange="updateBulkCopyButton()" 
-                                       data-template='@json([
-                                           "id" => $tpl->id,
-                                           "depot" => $tpl->depot->name,
-                                           "day" => $dayNames[$tpl->day_of_week],
-                                           "start" => \Carbon\Carbon::parse($tpl->start_time)->format("H:i"),
-                                           "end" => \Carbon\Carbon::parse($tpl->end_time)->format("H:i")
-                                       ])'>
+                                       data-template='@json($templateData)'>
                             </td>
                             <td class="px-3 py-1">
                                 {{ ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][$tpl->day_of_week] }}

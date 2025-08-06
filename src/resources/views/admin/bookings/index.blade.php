@@ -1,6 +1,3 @@
-@extends('layouts.admin')
-
-@section('content')
 <x-app-layout>
   @include('layouts.admin-nav')
 
@@ -254,10 +251,16 @@
 
         {{-- Actions --}}
         <td class="px-4 py-2 align-top space-y-1">
-          <a href="{{ route('admin.bookings.edit', $booking) }}"
-             class="inline-block px-2 py-1 bg-yellow-500 text-white rounded-full hover:bg-yellow-600 text-xs">
-            Edit
-          </a>
+          <div class="flex flex-col space-y-1">
+            <a href="{{ route('admin.bookings.show', $booking) }}"
+               class="inline-block px-2 py-1 bg-blue-500 text-white rounded-full hover:bg-blue-600 text-xs text-center">
+              View
+            </a>
+            <a href="{{ route('admin.bookings.edit', $booking) }}"
+               class="inline-block px-2 py-1 bg-yellow-500 text-white rounded-full hover:bg-yellow-600 text-xs text-center">
+              Edit
+            </a>
+          </div>
           <form action="{{ route('admin.bookings.destroy', $booking) }}" method="POST" onsubmit="return confirm('Delete?');">
             @csrf @method('DELETE')
             <button class="inline-block px-2 py-1 bg-red-600 text-white rounded-full hover:bg-red-700 text-xs">
@@ -520,4 +523,3 @@
     }, 1000);
   </script>
 </x-app-layout>
-@endsection

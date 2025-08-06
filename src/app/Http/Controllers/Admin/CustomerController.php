@@ -38,36 +38,15 @@ class CustomerController extends Controller
             'user_ids.*'=> 'exists:users,id',
         ]);
 
-        // Prevent assigning a user to multiple customers
-        if (!empty($data['user_ids'])) {
-            $alreadyAssigned = User::whereIn('id', $data['user_ids'])
-                ->whereNotNull('customer_id')
-                ->pluck('name')
-                ->toArray();
-
-            if (count($alreadyAssigned)) {
-                return back()
-                    ->withInput()
-                    ->withErrors([
-                        'user_ids' => 'These users are already assigned: ' . implode(', ', $alreadyAssigned)
-                    ]);
-            }
-        }
-
         // Create customer
         $customer = Customer::create([
             'name'  => $data['name'],
           //  'email' => $data['email'],
         ]);
 
-        // Clear any previous assignments (none on create)
-        User::where('customer_id', $customer->id)
-            ->update(['customer_id' => null]);
-
-        // Assign selected users by setting their customer_id
+        // Assign selected users using many-to-many relationship
         if (!empty($data['user_ids'])) {
-            User::whereIn('id', $data['user_ids'])
-                ->update(['customer_id' => $customer->id]);
+            $customer->users()->sync($data['user_ids']);
         }
 
         return redirect()->route('admin.customers.index')
@@ -93,36 +72,14 @@ class CustomerController extends Controller
         ]);
 
         // Prevent assigning a user to multiple customers (excluding current)
-        if (!empty($data['user_ids'])) {
-            $alreadyAssigned = User::whereIn('id', $data['user_ids'])
-                ->where('customer_id', '!=', $customer->id)
-                ->pluck('name')
-                ->toArray();
-
-            if (count($alreadyAssigned)) {
-                return back()
-                    ->withInput()
-                    ->withErrors([
-                        'user_ids' => 'These users are already assigned: ' . implode(', ', $alreadyAssigned)
-                    ]);
-            }
-        }
-
         // Update customer
         $customer->update([
             'name'  => $data['name'],
             'email' => $data['email'],
         ]);
 
-        // Clear old assignments
-        User::where('customer_id', $customer->id)
-            ->update(['customer_id' => null]);
-
-        // Assign new users
-        if (!empty($data['user_ids'])) {
-            User::whereIn('id', $data['user_ids'])
-                ->update(['customer_id' => $customer->id]);
-        }
+        // Sync users using many-to-many relationship
+        $customer->users()->sync($data['user_ids'] ?? []);
 
         return redirect()->route('admin.customers.index')
                          ->with('success', 'Customer updated successfully.');
@@ -131,9 +88,8 @@ class CustomerController extends Controller
     // Remove the specified customer from storage
     public function destroy(Customer $customer)
     {
-        // Detach users
-        User::where('customer_id', $customer->id)
-            ->update(['customer_id' => null]);
+        // Detach all users using many-to-many relationship
+        $customer->users()->detach();
 
         $customer->delete();
 

@@ -59,7 +59,7 @@ class TestCustomerRoutes extends Command
             $customerCount = Customer::count();
             $this->line("✅ Customers in database: {$customerCount}");
             
-            $customerUsers = User::whereNotNull('customer_id')->count();
+            $customerUsers = User::whereHas('customers')->count();
             $this->line("✅ Customer users: {$customerUsers}");
             
             $customerBookings = Booking::whereNotNull('customer_id')->count();

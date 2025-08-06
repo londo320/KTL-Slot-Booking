@@ -13,27 +13,68 @@ use App\Models\BookingType;
 use App\Models\Depot;
 use App\Models\Customer;
 use Illuminate\Support\Carbon;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Facades\Mail;
+use App\Services\PDFService;
 
 class BookingController extends Controller
 {
     public function __construct()
     {
-        $this->middleware(['auth', 'role:admin']);
+        $this->middleware(['auth', 'role:admin|depot-admin|site-admin']);
+    }
+
+    /**
+     * Get depot IDs that the current user can access based on their role
+     */
+    private function getAllowedDepotIds()
+    {
+        $user = auth()->user();
+        
+        if ($user->hasRole('admin')) {
+            // Super admin can access all depots
+            return Depot::pluck('id')->toArray();
+        } else {
+            // depot-admin, site-admin, and customer roles are limited to assigned depots
+            return $user->depots()->pluck('depots.id')->toArray();
+        }
+    }
+
+    /**
+     * Get depots that the current user can access based on their role
+     */
+    private function getAllowedDepots()
+    {
+        $user = auth()->user();
+        
+        if ($user->hasRole('admin')) {
+            // Super admin can access all depots
+            return Depot::orderBy('name')->get();
+        } else {
+            // depot-admin, site-admin, and customer roles are limited to assigned depots
+            return $user->depots()->orderBy('name')->get();
+        }
+    }
+
+    /**
+     * Check if user has depot access, throw 403 if not
+     */
+    private function ensureDepotAccess()
+    {
+        $user = auth()->user();
+        
+        if (!$user->hasRole('admin')) {
+            $isDepotUser = DB::table('depot_user')->where('user_id', $user->id)->exists();
+            if (!$isDepotUser) {
+                abort(403, 'Unauthorized access — you are not linked to any depot.');
+            }
+        }
     }
 
     public function index(Request $request)
     {
-        $user = auth()->user();
-
-        // Check if the user is linked to any depot in the depot_user pivot table
-        $isDepotUser = DB::table('depot_user')->where('user_id', $user->id)->exists();
-
-        if (! $isDepotUser) {
-            abort(403, 'Unauthorized access — you are not linked to any depot.');
-        }
-
-        // Proceed with loading depot IDs the user can access
-        $allowedDepotIds = $user->depots()->pluck('depots.id')->toArray();
+        $this->ensureDepotAccess();
+        $allowedDepotIds = $this->getAllowedDepotIds();
 
         // Base query restricted to user's depots
         $query = Booking::with(['slot.depot', 'bookingType', 'customer'])
@@ -84,7 +125,7 @@ class BookingController extends Controller
             ->appends($request->only(['depot_id','customer_id','booking_type_id','from','to','arrival']));
 
         // Load needed data for filters in view
-        $depots = Depot::orderBy('name')->whereIn('id', $allowedDepotIds)->get();
+        $depots = $this->getAllowedDepots();
         $customers = Customer::orderBy('name')->get();
         $types = BookingType::orderBy('name')->get();
 
@@ -166,22 +207,37 @@ if ($b->arrived_at) {
 
 public function create()
 {
-    $user = auth()->user();
-    $allowedDepotIds = $user->depots()->pluck('depots.id')->toArray();
+    $this->ensureDepotAccess();
+    $allowedDepotIds = $this->getAllowedDepotIds();
+    $depots = $this->getAllowedDepots();
 
-    $slots = Slot::with('depot')
+    $slots = Slot::with(['depot', 'allowed_customers'])
         ->whereIn('depot_id', $allowedDepotIds)
         ->whereDate('start_at', '>=', now()->toDateString())
         ->get()
         ->filter(fn($slot) => $slot->bookings()->count() < $slot->capacity);
 
     $types     = BookingType::orderBy('name')->get();
-    $depots    = $user->depots()->orderBy('name')->get();
     $customers = Customer::orderBy('name')->get();
 
     $booking = new Booking(); // 👈 avoids undefined variable errors
 
     return view('admin.bookings.create', compact('slots', 'types', 'depots', 'customers', 'booking'));
+}
+
+public function show(Booking $booking)
+{
+    $this->ensureDepotAccess();
+    $allowedDepotIds = $this->getAllowedDepotIds();
+    
+    // Check if user has access to this booking's depot
+    if (!in_array($booking->slot->depot_id, $allowedDepotIds)) {
+        abort(403, 'You do not have access to this booking.');
+    }
+
+    return view('admin.bookings.show', [
+        'booking' => $booking->load(['slot.depot', 'bookingType', 'customer', 'user']),
+    ]);
 }
 public function store(Request $request)
 {
@@ -232,14 +288,13 @@ public function store(Request $request)
 
 public function edit(Booking $booking)
 {
-    $user = auth()->user();
-    $allowedDepotIds = $user->depots()->pluck('depots.id')->toArray();
-
-    $depots = $user->depots()->orderBy('name')->get();
+    $this->ensureDepotAccess();
+    $allowedDepotIds = $this->getAllowedDepotIds();
+    $depots = $this->getAllowedDepots();
     $types = BookingType::orderBy('name')->get();
     $customers = Customer::orderBy('name')->get();
 
-    $availableSlots = Slot::with('depot')
+    $availableSlots = Slot::with(['depot', 'allowed_customers'])
         ->whereIn('depot_id', $allowedDepotIds)
         ->whereDate('start_at', '>=', now()->toDateString())
         ->get()
@@ -249,6 +304,7 @@ public function edit(Booking $booking)
 
     // Ensure current slot is visible even if full or past
     if ($booking->slot && !$availableSlots->contains('id', $booking->slot->id)) {
+        $booking->slot->load(['depot', 'allowed_customers']);
         $availableSlots->push($booking->slot);
     }
 
@@ -366,6 +422,69 @@ public function edit(Booking $booking)
             $count = $b->bookings()->when($ignoreBookingId, fn($q) => $q->where('id', '!=', $ignoreBookingId))->count();
             if ($count >= $b->capacity) abort(422, 'Time blocks full.');
         }
+    }
+
+    public function emailPDF(Request $request, Booking $booking)
+    {
+        $this->ensureDepotAccess();
+        $allowedDepotIds = $this->getAllowedDepotIds();
+        
+        // Check if user has access to this booking's depot
+        if (!in_array($booking->slot->depot_id, $allowedDepotIds)) {
+            return response()->json(['success' => false, 'message' => 'Access denied'], 403);
+        }
+
+        $request->validate([
+            'email' => 'required|email',
+            'message' => 'nullable|string|max:500'
+        ]);
+
+        try {
+            $booking->load(['slot.depot', 'bookingType', 'customer', 'user']);
+            
+            // Generate PDF with mPDF for better emoji support
+            $pdfService = new PDFService();
+            $mpdf = $pdfService->generateBookingPDF('admin.bookings.pdf', compact('booking'));
+            $pdfContent = $mpdf->Output('', 'S');
+            
+            // Send email
+            Mail::send('admin.bookings.email', [
+                'booking' => $booking,
+                'message' => $request->input('message', '')
+            ], function ($mail) use ($request, $booking, $pdfContent) {
+                $mail->to($request->input('email'))
+                     ->subject("Booking Details #" . $booking->id)
+                     ->attachData($pdfContent, "booking-{$booking->id}.pdf", [
+                         'mime' => 'application/pdf',
+                     ]);
+            });
+
+            return response()->json(['success' => true, 'message' => 'PDF sent successfully']);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Failed to send PDF: ' . $e->getMessage()]);
+        }
+    }
+
+    public function downloadPDF(Booking $booking)
+    {
+        $this->ensureDepotAccess();
+        $allowedDepotIds = $this->getAllowedDepotIds();
+        
+        // Check if user has access to this booking's depot
+        if (!in_array($booking->slot->depot_id, $allowedDepotIds)) {
+            abort(403, 'You do not have access to this booking.');
+        }
+
+        $booking->load(['slot.depot', 'bookingType', 'customer', 'user']);
+        
+        $pdfService = new PDFService();
+        $mpdf = $pdfService->generateBookingPDF('admin.bookings.pdf', compact('booking'));
+        
+        $filename = "booking-{$booking->id}-{$booking->customer->name}-" . $booking->slot->start_at->format('Y-m-d') . ".pdf";
+        
+        return response($mpdf->Output($filename, 'S'))
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'attachment; filename="' . $filename . '"');
     }
 
     public function getLateDurationMinutesAttribute()

@@ -8,6 +8,9 @@ use App\Models\Booking;
 use App\Models\Slot;
 use App\Models\BookingType;
 use Carbon\Carbon;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Facades\Mail;
+use App\Services\PDFService;
 
 class CustomerBookingController extends Controller
 {
@@ -19,12 +22,15 @@ class CustomerBookingController extends Controller
 
     public function create(Request $request)
     {
+        $user = auth()->user();
+        $userDepots = $user->depots;
+        
         $date = $request->input('date') ?? now()->format('Y-m-d');
-        $depotId = $request->input('depot_id') ?? auth()->user()->depots->pluck('id')->first();
+        $depotId = $request->input('depot_id') ?? $userDepots->first()?->id;
 
         return view('customer.bookings.create', [
             'booking' => new Booking(),
-            'slots'   => $this->getVisibleSlots($depotId, $date),
+            'slots'   => $depotId ? $this->getVisibleSlots($depotId, $date) : collect(),
             'types'   => BookingType::orderBy('name')->get(),
             'selectedDepotId' => $depotId,
             'selectedDate' => $date,
@@ -34,6 +40,7 @@ class CustomerBookingController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
+            'depot_id' => 'required|exists:depots,id',
             'slot_id' => 'required|exists:slots,id',
             'booking_type_id' => 'required|exists:booking_types,id',
             'expected_cases' => 'nullable|integer|min:0',
@@ -53,17 +60,32 @@ class CustomerBookingController extends Controller
             'special_instructions' => 'nullable|string',
         ]);
 
+        // Verify user has access to this depot
+        $user = auth()->user();
+        if (!$user->depots->contains('id', $data['depot_id'])) {
+            return back()->withErrors(['depot_id' => 'You do not have access to this depot.']);
+        }
+
         $slot = Slot::findOrFail($data['slot_id']);
         if ($slot->locked_at && $slot->locked_at->isPast()) {
             return back()->withErrors(['slot_id' => 'That slot is no longer available (cut-off time passed).']);
         }
 
         $data['user_id'] = auth()->id();
-        $data['customer_id'] = auth()->user()->customer_id;
+        $data['customer_id'] = auth()->user()->getCustomerId();
 
         Booking::create($data);
 
         return redirect()->route('customer.bookings.index')->with('success', 'Booking created.');
+    }
+
+    public function show(Request $request, Booking $booking)
+    {
+        $this->authorize('view', $booking);
+
+        return view('customer.bookings.show', [
+            'booking' => $booking->load(['slot.depot', 'bookingType', 'customer']),
+        ]);
     }
 
     public function edit(Request $request, Booking $booking)
@@ -71,7 +93,12 @@ class CustomerBookingController extends Controller
         $this->authorize('update', $booking);
 
         if ($booking->arrived_at) {
-            return redirect()->route('customer.bookings.index')->with('error', 'Cannot edit once arrived.');
+            return redirect()->route('customer.bookings.show', $booking)->with('info', 'Cannot edit booking after vehicle has arrived. Viewing details instead.');
+        }
+
+        // Check if slot is locked
+        if ($booking->slot->locked_at && $booking->slot->locked_at->isPast()) {
+            return redirect()->route('customer.bookings.show', $booking)->with('info', 'Cannot edit booking after cut-off time has passed. Viewing details instead.');
         }
 
         $date = $request->input('date') ?? $booking->slot->start_at->format('Y-m-d');
@@ -130,6 +157,148 @@ class CustomerBookingController extends Controller
         return redirect()->route('customer.bookings.index')->with('success', 'Booking updated.');
     }
 
+    /**
+     * API endpoint to get availability overview for a depot
+     */
+    public function availability(Request $request)
+    {
+        $depotId = $request->input('depot_id');
+        if (!$depotId) {
+            return response()->json(['dates' => []]);
+        }
+
+        $user = auth()->user();
+        $customerId = $user->getCustomerId();
+        
+        // Check if user has access to this depot
+        if (!$user->depots->contains('id', $depotId)) {
+            return response()->json(['error' => 'Access denied'], 403);
+        }
+
+        // Get the next 14 days with available slots
+        $dates = [];
+        $startDate = now();
+        $endDate = now()->addDays(14);
+
+        for ($date = $startDate->copy(); $date->lte($endDate); $date->addDay()) {
+            $dateString = $date->format('Y-m-d');
+            $availableSlots = $this->getVisibleSlots($depotId, $dateString)->count();
+            
+            if ($availableSlots > 0) {
+                $dates[] = [
+                    'date' => $dateString,
+                    'available_slots' => $availableSlots,
+                    'day_name' => $date->format('l'),
+                ];
+            }
+        }
+
+        return response()->json(['dates' => $dates]);
+    }
+
+    /**
+     * API endpoint to get slots for a specific depot and date
+     */
+    public function slots(Request $request)
+    {
+        $depotId = $request->input('depot_id');
+        $date = $request->input('date');
+        
+        if (!$depotId || !$date) {
+            return response()->json(['slots' => []]);
+        }
+
+        $user = auth()->user();
+        
+        // Check if user has access to this depot
+        if (!$user->depots->contains('id', $depotId)) {
+            return response()->json(['error' => 'Access denied'], 403);
+        }
+
+        $slots = $this->getVisibleSlots($depotId, $date);
+        
+        $formattedSlots = $slots->map(function ($slot) {
+            $startAt = Carbon::parse($slot->start_at);
+            $endAt = Carbon::parse($slot->end_at);
+            
+            // Check if this is a restricted slot
+            $isRestricted = $slot->allowed_customers->count() > 0;
+            
+            // Get customer info for display
+            $customersInfo = '';
+            if ($isRestricted) {
+                $customerNames = $slot->allowed_customers->pluck('name')->take(2);
+                $customersInfo = $customerNames->join(', ');
+                if ($slot->allowed_customers->count() > 2) {
+                    $customersInfo .= ' +' . ($slot->allowed_customers->count() - 2) . ' more';
+                }
+            } else {
+                $customersInfo = 'Public';
+            }
+
+            return [
+                'id' => $slot->id,
+                'time_range' => $startAt->format('H:i') . ' - ' . $endAt->format('H:i'),
+                'is_restricted' => $isRestricted,
+                'customers_info' => $customersInfo,
+                'depot_name' => $slot->depot->name,
+            ];
+        });
+
+        return response()->json(['slots' => $formattedSlots]);
+    }
+
+    public function emailPDF(Request $request, Booking $booking)
+    {
+        $this->authorize('view', $booking);
+
+        $request->validate([
+            'email' => 'required|email',
+            'message' => 'nullable|string|max:500'
+        ]);
+
+        try {
+            $booking->load(['slot.depot', 'bookingType', 'customer', 'user']);
+            
+            // Generate PDF with mPDF for better emoji support
+            $pdfService = new PDFService();
+            $mpdf = $pdfService->generateBookingPDF('customer.bookings.pdf', compact('booking'));
+            $pdfContent = $mpdf->Output('', 'S');
+            
+            // Send email
+            Mail::send('customer.bookings.email', [
+                'booking' => $booking,
+                'message' => $request->input('message', '')
+            ], function ($mail) use ($request, $booking, $pdfContent) {
+                $mail->to($request->input('email'))
+                     ->subject("Your Booking Details #" . $booking->id)
+                     ->attachData($pdfContent, "booking-{$booking->id}.pdf", [
+                         'mime' => 'application/pdf',
+                     ]);
+            });
+
+            return response()->json(['success' => true, 'message' => 'PDF sent successfully']);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Failed to send PDF: ' . $e->getMessage()]);
+        }
+    }
+
+    public function downloadPDF(Booking $booking)
+    {
+        $this->authorize('view', $booking);
+
+        $booking->load(['slot.depot', 'bookingType', 'customer', 'user']);
+        
+        $pdfService = new PDFService();
+        $mpdf = $pdfService->generateBookingPDF('customer.bookings.pdf', compact('booking'));
+        
+        $filename = "booking-{$booking->id}-" . $booking->slot->start_at->format('Y-m-d') . ".pdf";
+        
+        return response($mpdf->Output($filename, 'S'))
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'attachment; filename="' . $filename . '"');
+    }
+
     public function export(Request $request)
     {
         $bookings = $this->filteredBookings($request)->get();
@@ -179,7 +348,7 @@ class CustomerBookingController extends Controller
 private function filteredBookings(Request $request)
 {
     $user = auth()->user();
-    $customerId = $user->customer_id;
+    $customerId = $user->getCustomerId();
     $accessibleDepotIds = $user->depots->pluck('id')->toArray();
 
     $query = Booking::with(['slot.depot', 'bookingType'])
@@ -224,7 +393,7 @@ private function filteredBookings(Request $request)
 protected function getVisibleSlots($depotId, $date)
 {
     $user       = auth()->user();
-    $customerId = $user->customer_id;
+    $customerId = $user->getCustomerId();
 
     return Slot::where('depot_id', $depotId)
         ->whereDate('start_at', $date)

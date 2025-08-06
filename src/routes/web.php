@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\{
     SlotGeneratorController,
     AdminSettingsController,
     DepotProductController,
+    UserSwitchController,
     ProductController,
     CustomerDepotProductController,
     DepotCaseRangeController,
@@ -67,6 +68,15 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/dashboard', fn() => redirect()->route('admin.dashboard'))->name('dashboard');
 
+    // Universal switch-back route (accessible to all authenticated users during testing)
+    Route::post('switch-back', [UserSwitchController::class, 'switchBack'])->name('switch-back');
+    
+    // Emergency recovery route (GET request for direct URL access)
+    Route::get('emergency-switch-back', [UserSwitchController::class, 'switchBack'])->name('emergency-switch-back');
+    
+    // Recovery page for locked-out users
+    Route::get('recovery', function() { return view('recovery'); })->name('recovery');
+
     /**
      * ───── Admin Routes ─────
      */
@@ -76,7 +86,6 @@ Route::middleware('auth')->group(function () {
         Route::resources([
             'depots' => DepotController::class,
             'booking-types' => BookingTypeController::class,           
-            'bookings' => BookingController::class,
             'slot-templates' => SlotTemplateController::class,
             'products' => ProductController::class,
             'customers' => CustomerController::class,
@@ -97,6 +106,9 @@ Route::middleware('auth')->group(function () {
         Route::get('settings', [SettingsController::class, 'index'])->name('settings.index');
         Route::post('settings', [SettingsController::class, 'store'])->name('settings.store');
 
+        // User switching routes (testing only)
+        Route::post('switch-user/{user}', [UserSwitchController::class, 'switchTo'])->name('switch-user');
+
         Route::get('booking-rules', [BookingRulesController::class, 'index'])->name('booking-rules.index');
         Route::post('booking-rules', [BookingRulesController::class, 'store'])->name('booking-rules.store');
 
@@ -105,39 +117,32 @@ Route::middleware('auth')->group(function () {
 
         Route::get('slot-usage', [SlotUsageController::class, 'index'])->name('slot-usage.index');
 
-        Route::get('slot-settings', [SlotGenerationSettingController::class, 'index'])->name('slot-settings.index');
-        Route::post('slot-settings', [SlotGenerationSettingController::class, 'store'])->name('slot-settings.store');
-
         Route::get('settings/dashboard', [AdminSettingsController::class, 'dashboard'])->name('settings.dashboard');
+        Route::resource('depot-case-ranges', DepotCaseRangeController::class);
 
-        // Depot Product Management
-        Route::get('depots/{depot}/products', [DepotProductController::class, 'index'])->name('depots.products.index');
-        Route::post('depots/{depot}/products', [DepotProductController::class, 'update'])->name('depots.products.update');
-        Route::delete('depots/{depot}/products/{product}', [DepotProductController::class, 'destroy'])->name('depots.products.destroy');
+        Route::resource('users', AdminController::class)->names([
+            'index' => 'users.index',
+            'create' => 'users.create',
+            'store' => 'users.store',
+            'edit' => 'users.edit',
+            'update' => 'users.update',
+        ]);
+    });
 
-        // Case Ranges
-        Route::get('case-ranges', [DepotCaseRangeController::class, 'index'])->name('case-ranges.index');
-        Route::get('case-ranges/create', [DepotCaseRangeController::class, 'create'])->name('case-ranges.create');
-        Route::post('case-ranges', [DepotCaseRangeController::class, 'store'])->name('case-ranges.store');
-        Route::get('case-ranges/{caseRange}/edit', [DepotCaseRangeController::class, 'edit'])->name('case-ranges.edit');
-        Route::put('case-ranges/{caseRange}', [DepotCaseRangeController::class, 'update'])->name('case-ranges.update');
-        Route::delete('case-ranges/{caseRange}', [DepotCaseRangeController::class, 'destroy'])->name('case-ranges.destroy');
-
-        // Arrival/Departure
+    /**
+     * ───── Booking Routes (Available to Admin, Depot-Admin, Site-Admin) ─────
+     */
+    Route::prefix('admin')->as('admin.')->middleware(['role:admin|depot-admin|site-admin'])->group(function () {
+        Route::resource('bookings', BookingController::class);
+        
+        // Arrival/Departure routes
         Route::get('bookings/{booking}/arrival', [BookingController::class, 'markArrived'])->name('bookings.arrival.form');
         Route::post('bookings/{booking}/arrival', [BookingController::class, 'markArrived'])->name('bookings.arrival');
         Route::patch('bookings/{booking}/departure', [BookingController::class, 'markDeparted'])->name('bookings.departure');
-
-       // Route::get('users', [AdminController::class, 'index'])->name('users.index');
-       // Route::post('users/bulk-action', [AdminController::class, 'bulkAction'])->name('users.bulkAction');
-       // Route::get('users/assign-role/{userId}', [AdminController::class, 'showAssignForm']);
-       // Route::put('users/assign-role/{userId}', [AdminController::class, 'assignRoleAndDepots'])->name('assignRoleAndDepots');
-       // Route::get('users/{userId}/details', [AdminController::class, 'getUserDetails'])->name('users.details');
-       // Route::put('users/{userId}', [AdminController::class, 'update'])->name('users.update');
-        Route::resource('users', AdminController::class)->except(['show']);
-      
         
-
+        // PDF Email and Download routes
+        Route::post('bookings/{booking}/email-pdf', [BookingController::class, 'emailPDF'])->name('bookings.email-pdf');
+        Route::get('bookings/{booking}/download-pdf', [BookingController::class, 'downloadPDF'])->name('bookings.download-pdf');
     });
 
     /**
@@ -148,10 +153,6 @@ Route::middleware('auth')->group(function () {
         Route::get('/arrivals', [BookingController::class, 'arrivals'])->name('arrivals.index');
         
         Route::resource('slots', SlotController::class)->except(['show']);
-        Route::resource('bookings', BookingController::class)->only(['index', 'edit', 'update']);
-        Route::get('bookings/{booking}/arrival', [BookingController::class, 'markArrived'])->name('bookings.arrival.form');
-        Route::post('bookings/{booking}/arrival', [BookingController::class, 'markArrived'])->name('bookings.arrival');
-        Route::patch('bookings/{booking}/departure', [BookingController::class, 'markDeparted'])->name('bookings.departure');
     });
 
     /**
@@ -162,10 +163,6 @@ Route::middleware('auth')->group(function () {
         Route::get('/search', [SiteAdminDashboardController::class, 'search'])->name('search');
         Route::get('/arrivals', [SiteAdminDashboardController::class, 'arrivals'])->name('arrivals.index');
         Route::get('/departures', [SiteAdminDashboardController::class, 'departures'])->name('departures.index');
-        
-        Route::get('bookings/{booking}/arrival', [BookingController::class, 'markArrived'])->name('bookings.arrival.form');
-        Route::post('bookings/{booking}/arrival', [BookingController::class, 'markArrived'])->name('bookings.arrival');
-        Route::patch('bookings/{booking}/departure', [BookingController::class, 'markDeparted'])->name('bookings.departure');
     });
 
     /**
@@ -173,8 +170,17 @@ Route::middleware('auth')->group(function () {
      */
     Route::prefix('customer')->middleware(['role:customer'])->as('customer.')->group(function () {
         Route::get('/dashboard', [CustomerDashboardController::class, 'index'])->name('dashboard');
-        //Route::resource('bookings', CustomerBookingController::class)->only(['index', 'create', 'store']);
-         Route::resource('bookings', \App\Http\Controllers\Customer\CustomerBookingController::class)->except(['show', 'destroy']);
+        
+        // Booking management
+        Route::resource('bookings', \App\Http\Controllers\Customer\CustomerBookingController::class)->except(['destroy']);
+        
+        // API endpoints for booking creation
+        Route::get('/availability', [\App\Http\Controllers\Customer\CustomerBookingController::class, 'availability'])->name('availability');
+        Route::get('/slots', [\App\Http\Controllers\Customer\CustomerBookingController::class, 'slots'])->name('slots');
+        
+        // PDF Email and Download routes
+        Route::post('/bookings/{booking}/email-pdf', [\App\Http\Controllers\Customer\CustomerBookingController::class, 'emailPDF'])->name('bookings.email-pdf');
+        Route::get('/bookings/{booking}/download-pdf', [\App\Http\Controllers\Customer\CustomerBookingController::class, 'downloadPDF'])->name('bookings.download-pdf');
     });
 
 

@@ -1,16 +1,10 @@
 <div class="grid grid-cols-2 gap-6">
 
   <div>
-    <label class="block text-sm font-medium">Slot</label>
+    <label class="block text-sm font-medium">Available Slots</label>
     <select name="slot_id" required class="mt-1 block w-full border-gray-300 rounded">
       <option value="">– Choose slot –</option>
-      @foreach($slots as $slot)
-        <option value="{{ $slot->id }}"
-          @selected(old('slot_id', $booking->slot_id) == $slot->id)>
-          {{ $slot->depot->name }}
-          ({{ \Carbon\Carbon::parse($slot->start_at)->format('d-M H:i') }} → {{ \Carbon\Carbon::parse($slot->end_at)->format('d-M H:i') }})
-        </option>
-      @endforeach
+      {{-- Slots will be loaded dynamically via JavaScript --}}
     </select>
     @error('slot_id')<p class="text-red-600 text-sm">{{ $message }}</p>@enderror
   </div>

@@ -19,7 +19,6 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'customer_id', // Make sure you have this in your migration
     ];
 
     // Relationship with depots
@@ -28,11 +27,6 @@ class User extends Authenticatable
         return $this->belongsToMany(Depot::class, 'depot_user');
     }
 
-    // Relationship with customer (One-to-One) - Legacy for customer role
-    public function customer()
-    {
-        return $this->belongsTo(Customer::class);
-    }
 
     // Relationship with customers (Many-to-Many) - New for multiple customer assignment
     public function customers()
@@ -48,7 +42,8 @@ public function depotIds()
 
 public function getCustomerId(): ?int
 {
-    return $this->customer_id ?? null;
+    // Return first assigned customer ID, or null if none
+    return $this->customers()->first()?->id;
 }
 
 public function belongsToDepot(int $depotId): bool
@@ -58,20 +53,20 @@ public function belongsToDepot(int $depotId): bool
 
 /**
  * Get all customer IDs this user has access to
- * - Customer role: Uses legacy customer_id field
- * - Admin/Site roles: Uses many-to-many customers, or all if none assigned
+ * - All roles: Uses many-to-many customers relationship
+ * - If no customers assigned, admins can see all customers
  */
 public function getAccessibleCustomerIds(): array
 {
-    // If user has customer role, restrict to their assigned customer only
-    if ($this->hasRole('customer')) {
-        return $this->customer_id ? [$this->customer_id] : [];
-    }
-
-    // For admin/site roles, check if they have specific customers assigned
+    // Get assigned customers from many-to-many relationship
     $assignedCustomerIds = $this->customers()->pluck('customers.id')->toArray();
     
-    // If no specific customers assigned, they can see all customers
+    // If user has customer role and no customers assigned, they see nothing
+    if ($this->hasRole('customer')) {
+        return $assignedCustomerIds;
+    }
+    
+    // For admin/site roles, if no specific customers assigned, they can see all customers
     if (empty($assignedCustomerIds)) {
         return Customer::pluck('id')->toArray();
     }

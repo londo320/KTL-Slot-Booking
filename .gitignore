@@ -1,0 +1,50 @@
+# Dependencies
+src/node_modules/
+src/vendor/
+
+# Laravel specific
+src/.env
+src/.env.local
+src/.env.production
+src/bootstrap/cache/*.php
+src/storage/logs/*.log
+src/storage/framework/cache/data/*
+src/storage/framework/sessions/*
+src/storage/framework/views/*
+src/storage/app/public/*
+!src/storage/app/public/.gitignore
+
+# Database
+database/
+*.sqlite
+*.sqlite3
+src/database/database.sqlite
+
+# Build assets
+src/public/build/*
+src/public/hot
+
+# OS and IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Windows specific
+desktop.ini
+autostart
+
+# Backup files
+backup-exclude.txt
+*.zip
+*_backup_*
+
+# OneDrive sync issues
+~$*
+*.tmp
+
+# Docker volumes
+mysql-data/
+redis-data/

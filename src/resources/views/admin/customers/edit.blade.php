@@ -26,21 +26,26 @@
       @error('name') <p class="text-red-600 text-sm mt-1">{{ $message }}</p> @enderror
     </div>
 
-  <label for="user_id" class="block text-sm font-medium">Assign User</label>
-  <select name="user_id" id="user_id"
-          class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">
-    <option value="">— Select a user —</option>
-    @foreach($users as $user)
-      <option value="{{ $user->id }}"
-        {{ old('user_id', $customer->users->first()->id ?? '') == $user->id ? 'selected' : '' }}>
-        {{ $user->name }}
-      </option>
-    @endforeach
-  </select>
-  @error('user_id')
-    <p class="text-red-600 text-sm mt-1">{{ $message }}</p>
-  @enderror
-</div>
+    {{-- Assign multiple users (optional) --}}
+    <div>
+      <label for="user_ids" class="block text-sm font-medium">Assign Users (Optional)</label>
+      <select name="user_ids[]"
+              id="user_ids"
+              class="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
+              multiple
+              size="6">
+        @foreach($users as $user)
+          <option value="{{ $user->id }}"
+            {{ in_array($user->id, old('user_ids', $customer->users->pluck('id')->toArray())) ? 'selected' : '' }}>
+            {{ $user->name }} ({{ $user->email }})
+          </option>
+        @endforeach
+      </select>
+      <p class="text-sm text-gray-600 mt-1">Hold Ctrl/Cmd to select multiple users. Leave empty if no users need assignment.</p>
+      @error('user_ids')
+        <p class="text-red-600 text-sm mt-1">{{ $message }}</p>
+      @enderror
+    </div>
 
     <div class="flex justify-end space-x-2">
       <a href="{{ route('admin.customers.index') }}"

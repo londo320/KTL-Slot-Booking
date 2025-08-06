@@ -21,7 +21,7 @@ class BookingPolicy
      */
 public function view(User $user, Booking $booking): bool
 {
-    return $user->hasRole('customer') && $user->customer_id === $booking->customer_id;
+    return $user->hasRole('customer') && $user->canAccessCustomer($booking->customer_id);
 }
 
     /**
@@ -37,7 +37,7 @@ public function view(User $user, Booking $booking): bool
      */
 public function update(User $user, Booking $booking): bool
 {
-    return $user->hasRole('customer') && $user->customer_id === $booking->customer_id;
+    return $user->hasRole('customer') && $user->canAccessCustomer($booking->customer_id);
 }
 
     /**

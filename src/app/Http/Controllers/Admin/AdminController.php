@@ -15,7 +15,7 @@ class AdminController extends Controller
     // Display the list of users
     public function index()
     {
-        $users = User::with(['roles', 'depots', 'customer', 'customers'])->paginate(15);
+        $users = User::with(['roles', 'depots', 'customers'])->paginate(15);
         $roles = Role::all(); // Get all roles for the dropdown
         $depots = Depot::all();
         $customers = Customer::all();  // Get all customers for selection
@@ -43,7 +43,6 @@ class AdminController extends Controller
             'email'          => 'required|email|max:255|unique:users,email,' . $id,
             'role_ids'       => 'required|array',           // Multiple roles
             'role_ids.*'     => 'integer|exists:roles,id',
-            'customer_id'    => 'nullable|exists:customers,id', // Legacy customer (optional)
             'customer_ids'   => 'nullable|array',            // Multiple customers (optional)
             'customer_ids.*' => 'exists:customers,id',       // Ensure all selected customers are valid
             'depot_ids'      => 'required|array',            // Ensure at least one depot is selected
@@ -56,7 +55,6 @@ class AdminController extends Controller
         // Update user basic fields
         $user->name        = $validated['name'];
         $user->email       = $validated['email'];
-        $user->customer_id = $validated['customer_id'] ?? null; // Legacy customer field
         $user->save();
 
         // Sync multiple roles via pivot
@@ -112,7 +110,6 @@ class AdminController extends Controller
             'email'             => 'required|email|max:255|unique:users,email',
             'role_ids'          => 'required|array',           // Multiple roles
             'role_ids.*'        => 'integer|exists:roles,id',
-            'customer_id'       => 'nullable|exists:customers,id', // Legacy customer (optional)
             'customer_ids'      => 'nullable|array',            // Multiple customers (optional)
             'customer_ids.*'    => 'exists:customers,id',       // Ensure all selected customers are valid
             'depot_ids'         => 'required|array',
@@ -130,7 +127,6 @@ class AdminController extends Controller
         $user = User::create([
             'name'        => $validated['name'],
             'email'       => $validated['email'],
-            'customer_id' => $validated['customer_id'] ?? null, // Legacy customer field
             'password'    => bcrypt($password),
         ]);
 

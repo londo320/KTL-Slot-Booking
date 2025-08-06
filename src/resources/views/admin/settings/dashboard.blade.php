@@ -17,7 +17,7 @@
         🕒 Slot Duration Rules (Handball etc.)
       </a>
 
-      <a href="{{ route('admin.slot-settings.index') }}" class="block p-4 bg-white shadow rounded hover:bg-gray-50">
+      <a href="{{ route('admin.slot-capacity.index') }}" class="block p-4 bg-white shadow rounded hover:bg-gray-50">
         ⚙️ Slot Generation Rules
       </a>
 
@@ -33,42 +33,30 @@
         🗳️ Slot Capacity
       </a>
 
-       <a href="{{ route('admin.products.index') }}" class="block p-4 bg-white shadow rounded hover:bg-gray-50">
+      <a href="{{ route('admin.products.index') }}" class="block p-4 bg-white shadow rounded hover:bg-gray-50">
         🗳️ Products
       </a>
+      
       <a href="{{ route('admin.users.index') }}" class="block p-4 bg-white shadow rounded hover:bg-gray-50">
-        ⚙️  Users Settings
+        👥 Users Settings
       </a>
-            </a>
+      
       <a href="{{ route('admin.customers.index') }}" class="block p-4 bg-white shadow rounded hover:bg-gray-50">
-        👥  Customer Settings
+        👥 Customer Settings
       </a>
 
-                  </a>
-      <a href="{{ route('admin.depots.index') }}" class="block p-4 bg-white shadow rounded hover:bg-gray-50">
-        🏭  Depot Settings
+      <a href="{{ route('admin.slotReleaseRules.index') }}" class="block p-4 bg-white shadow rounded hover:bg-gray-50">
+        ⚙️ Slot Rules Config
       </a>
-                       </a>
-      <a href="{{ route('admin.booking-types.index') }}" class="block p-4 bg-white shadow rounded hover:bg-gray-50">
-        🏷️  Booking Types
-      </a>
-            </a>
-         <a href="{{ route('admin.slotReleaseRules.index') }}" class="block p-4 bg-white shadow rounded hover:bg-gray-50">
-        ⚙️  Slot Rules Config
-        </a>
 
 @if($depots->count())
   <div class="col-span-2 mt-6">
-    <h3 class="text-lg font-semibold mb-2">🔁 Manage Depot Product Rules</h3>
-    <ul class="list-disc list-inside space-y-1">
-      @foreach($depots as $depot)
-        <li>
-          <a href="{{ route('admin.depots.products.index', $depot->id) }}" class="text-blue-600 hover:underline">
-            {{ $depot->name }}
-          </a>
-        </li>
-      @endforeach
-    </ul>
+    <h3 class="text-lg font-semibold mb-2">🔁 Customer Depot Product Rules</h3>
+    <p class="text-sm text-gray-600 mb-2">
+      <a href="{{ route('admin.customer-depot-products.index') }}" class="text-blue-600 hover:underline">
+        Manage Customer-Depot-Product relationships
+      </a>
+    </p>
   </div>
 @endif
 

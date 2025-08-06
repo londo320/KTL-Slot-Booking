@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -28,11 +29,11 @@ class Customer extends Model
     ];
 
     /**
-     * A customer can have many user accounts (customer role)
+     * A customer can be assigned to many users (many-to-many relationship)
      */
-    public function users(): HasMany
+    public function users(): BelongsToMany
     {
-        return $this->hasMany(User::class, 'customer_id');
+        return $this->belongsToMany(User::class, 'customer_user');
     }
 
     /**

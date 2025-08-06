@@ -14,7 +14,7 @@ class BookingController extends Controller
 public function index()
 {
     $bookings = Booking::with(['slot.depot', 'bookingType'])
-        ->where('customer_id', auth()->user()->customer_id)
+        ->where('customer_id', auth()->user()->getCustomerId())
         ->latest()
         ->paginate(20);
 
@@ -47,7 +47,7 @@ public function store(Request $request)
     ]);
 
     $data['user_id'] = auth()->id();
-    $data['customer_id'] = auth()->user()->customer_id;
+    $data['customer_id'] = auth()->user()->getCustomerId();
 
     Booking::create($data);
 
@@ -92,7 +92,7 @@ public function update(Request $request, Booking $booking)
 
 Protected function getVisibleSlots()
 {
-    $customerId = auth()->user()->customer_id;
+    $customerId = auth()->user()->getCustomerId();
 
     return Slot::where('depot_id', auth()->user()->depot_id)
         ->where('start_at', '>', now())

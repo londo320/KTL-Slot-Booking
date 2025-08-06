@@ -2,7 +2,13 @@
 
 @section('content')
 <div class="py-6 max-w-7xl mx-auto">
-  <h1 class="text-2xl font-semibold mb-6">Slot Release Rules</h1>
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-semibold">Slot Release Rules</h1>
+    <a href="{{ route('admin.slotReleaseRules.create') }}" 
+       class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+      Create New Rule
+    </a>
+  </div>
 
   @if(session('success'))
     <div class="mb-4 p-3 bg-green-100 text-green-800 rounded">

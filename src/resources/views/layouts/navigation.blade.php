@@ -38,6 +38,16 @@
                     </x-slot>
 
                     <x-slot name="content">
+                        {{-- Switch Back Button (Testing Only) --}}
+                        @if(!app()->isProduction() && session('original_admin_id'))
+                            <form method="POST" action="{{ route('switch-back') }}" class="border-b border-gray-100 pb-1 mb-1">
+                                @csrf
+                                <button type="submit" class="block w-full text-left px-4 py-2 text-sm text-orange-600 hover:bg-orange-50 font-semibold">
+                                    🔄 Switch Back to Admin
+                                </button>
+                            </form>
+                        @endif
+
                         <x-dropdown-link :href="route('profile.edit')">
                             {{ __('Profile') }}
                         </x-dropdown-link>

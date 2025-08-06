@@ -19,7 +19,9 @@
 
   {{-- Slot --}}
 <div class="col-span-2">
-  <label class="block text-sm font-medium">Slot</label>
+  <label class="block text-sm font-medium">Slot 
+    <span class="text-xs text-gray-500 ml-2">🌐 = Public, 🔒 = Customer Restricted</span>
+  </label>
   <select name="slot_id" required class="mt-1 block w-full border-gray-300 rounded">
     <option value="">– Choose slot –</option>
 
@@ -30,9 +32,17 @@
     @foreach($groupedSlots as $depotName => $depotSlots)
       <optgroup label="{{ $depotName }}">
         @foreach($depotSlots as $slot)
+          @php
+            $isRestricted = $slot->allowed_customers->count() > 0;
+            $restrictedToCustomers = $isRestricted ? $slot->allowed_customers->pluck('name')->join(', ') : '';
+          @endphp
           <option value="{{ $slot->id }}"
-            @selected(old('slot_id', $booking->slot_id) == $slot->id)>
-            {{ $slot->start_at->format('D d-M H:i') }} → {{ $slot->end_at->format('H:i') }}
+            @selected(old('slot_id', $booking->slot_id) == $slot->id)
+            title="{{ $isRestricted ? 'Restricted to: ' . $restrictedToCustomers : 'Public slot - available to all customers' }}">
+            {{ $isRestricted ? '🔒' : '🌐' }} {{ $slot->start_at->format('D d-M H:i') }} → {{ $slot->end_at->format('H:i') }}
+            @if($isRestricted)
+              <span class="text-gray-600">({{ $slot->allowed_customers->pluck('name')->take(2)->join(', ') }}{{ $slot->allowed_customers->count() > 2 ? '+' . ($slot->allowed_customers->count() - 2) : '' }})</span>
+            @endif
           </option>
         @endforeach
       </optgroup>

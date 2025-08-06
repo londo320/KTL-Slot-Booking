@@ -50,15 +50,6 @@
               {{-- Customer Access --}}
               <td class="px-4 py-2">
                 <div class="text-xs">
-                  {{-- Legacy customer for customer role --}}
-                  @if($user->customer)
-                    <div class="mb-1">
-                      <span class="bg-orange-100 text-orange-800 px-2 py-1 rounded-full">
-                        Legacy: {{ $user->customer->name }}
-                      </span>
-                    </div>
-                  @endif
-                  
                   {{-- Multiple customers assignment --}}
                   @if($user->customers->count() > 0)
                     <div class="flex flex-wrap gap-1">
