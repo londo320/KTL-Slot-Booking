@@ -1,0 +1,46 @@
+FROM php:8.2-apache
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    libzip-dev \
+    zip \
+    unzip \
+    nodejs \
+    npm \
+    mariadb-server \
+    redis-server \
+    supervisor \
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Configure Apache
+RUN a2enmod rewrite
+COPY docker/apache/000-default.conf /etc/apache2/sites-available/000-default.conf
+
+# Create application directory
+WORKDIR /var/www/html
+
+# Copy supervisor configuration
+COPY docker/supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Copy startup script
+COPY docker/startup.sh /usr/local/bin/startup.sh
+RUN chmod +x /usr/local/bin/startup.sh
+
+# Set proper permissions
+RUN chown -R www-data:www-data /var/www/html
+
+# Expose ports
+EXPOSE 80 3306
+
+# Start supervisor
+CMD ["/usr/local/bin/startup.sh"]
